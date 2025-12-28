@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bible Timeline Order</title>
+  <style>
+    :root { --pad: 14px; --radius: 14px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; background:#f6f7fb; color:#111; }
+    header { padding: 18px var(--pad); background: white; border-bottom: 1px solid #e7e7ee; position: sticky; top: 0; z-index: 5; }
+    h1 { font-size: 18px; margin: 0 0 6px; }
+    p { margin: 0; font-size: 14px; color:#444; line-height: 1.35; }
+
+    main { padding: var(--pad); max-width: 860px; margin: 0 auto; }
+
+    .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    @media (min-width: 860px) { .grid { grid-template-columns: 1fr 1fr; } }
+
+    .panel {
+      background: white;
+      border: 1px solid #e7e7ee;
+      border-radius: var(--radius);
+      padding: var(--pad);
+      box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+    }
+
+    .panel h2 { font-size: 15px; margin: 0 0 10px; }
+    .hint { font-size: 13px; color:#555; margin-bottom: 10px; }
+
+    .list {
+      min-height: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .item {
+      background: #fff;
+      border: 1px solid #d9d9e5;
+      border-radius: 12px;
+      padding: 12px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      touch-action: none;
+      user-select: none;
+    }
+
+    .handle {
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      border: 1px solid #d9d9e5;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      color:#555;
+      flex: 0 0 auto;
+    }
+
+    .item.dragging { opacity: 0.6; }
+
+    .dropzone {
+      border: 2px dashed #cfd2e3;
+      background: #fafbff;
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .dropzone.active { border-color:#7c83ff; background:#f1f2ff; }
+
+    .controls { display:flex; gap:10px; flex-wrap: wrap; margin-top: 12px; }
+    button {
+      border: 1px solid #d9d9e5;
+      background: white;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    button.primary { border-color:#7c83ff; }
+    button:active { transform: translateY(1px); }
+
+    .status {
+      margin-top: 10px;
+      font-size: 14px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid #e7e7ee;
+      background: #fff;
+    }
+    .status.ok { border-color: #b7e3c6; background:#f3fff7; }
+    .status.no { border-color: #ffd1d1; background:#fff5f5; }
+
+    .small { font-size: 12px; color:#666; margin-top: 8px; }
+    .footer { text-align:center; color:#777; font-size: 12px; padding: 18px 0 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Timeline Mini-Game</h1>
+    <p>Drag events into the <b>Timeline</b> in the correct order, then tap <b>Check</b>.</p>
+  </header>
+
+  <main>
+    <div class="grid">
+      <section class="panel">
+        <h2>Scrambled Events</h2>
+        <div class="hint">Drag items from here into the timeline (you can also reorder inside the timeline).</div>
+        <div id="pool" class="list" aria-label="Scrambled events"></div>
+        <div class="small">Tip: On phones, long-press then drag.</div>
+      </section>
+
+      <section class="panel">
+        <h2>Timeline</h2>
+        <div class="hint">Drop here in the order you think is correct.</div>
+        <div id="timeline" class="list dropzone" aria-label="Timeline drop area"></div>
+
+        <div class="controls">
+          <button class="primary" id="checkBtn">Check</button>
+          <button id="resetBtn">Reset</button>
+          <button id="showBtn">Show Answer</button>
+        </div>
+
+        <div id="status" class="status" style="display:none;"></div>
+      </section>
+    </div>
+
+    <div class="footer">Bible class timeline activity</div>
+  </main>
+
+  <script>
+    // Correct order (your list)
+    const CORRECT = [
+      "Before the Flood",
+      "The Flood",
+      "Scattering of the People",
+      "Patriarchs",
+      "Exodus",
+      "Wandering in the Wilderness",
+      "Invasion and Conquest",
+      "Judges",
+      "United Kingdom",
+      "Divided Kingdom",
+      "Judah Alone",
+      "Captivity",
+      "Return",
+      "Years of Silence",
+      "Life of Christ",
+      "Early Church",
+      "Letters to Christians"
+    ];
+
+    const pool = document.getElementById("pool");
+    const timeline = document.getElementById("timeline");
+    const statusEl = document.getElementById("status");
+
+    // Fisher-Yates shuffle
+    function shuffle(arr) {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function makeItem(text) {
+      const el = document.createElement("div");
+      el.className = "item";
+      el.draggable = true;
+      el.dataset.value = text;
+
+      const handle = document.createElement("div");
+      handle.className = "handle";
+      handle.textContent = "≡";
+
+      const label = document.createElement("div");
+      label.textContent = text;
+
+      el.append(handle, label);
+
+      el.addEventListener("dragstart", (e) => {
+        el.classList.add("dragging");
+        e.dataTransfer.setData("text/plain", text);
+        // Required for Firefox
+        e.dataTransfer.effectAllowed = "move";
+      });
+      el.addEventListener("dragend", () => el.classList.remove("dragging"));
+
+      return el;
+    }
+
+    function clearStatus() {
+      statusEl.style.display = "none";
+      statusEl.classList.remove("ok", "no");
+      statusEl.textContent = "";
+    }
+
+    function setStatus(ok, message) {
+      statusEl.style.display = "block";
+      statusEl.classList.toggle("ok", ok);
+      statusEl.classList.toggle("no", !ok);
+      statusEl.textContent = message;
+    }
+
+    function currentTimeline() {
+      return Array.from(timeline.querySelectorAll(".item")).map(i => i.dataset.value);
+    }
+
+    function resetGame() {
+      clearStatus();
+      pool.innerHTML = "";
+      timeline.innerHTML = "";
+
+      const scrambled = shuffle(CORRECT);
+      scrambled.forEach(text => pool.appendChild(makeItem(text)));
+    }
+
+    // Drop / reorder behavior
+    function enableDrop(container) {
+      container.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        container.classList.add("active");
+
+        const dragging = document.querySelector(".item.dragging");
+        if (!dragging) return;
+
+        const after = getDragAfterElement(container, e.clientY);
+        if (after == null) container.appendChild(dragging);
+        else container.insertBefore(dragging, after);
+      });
+
+      container.addEventListener("dragleave", () => container.classList.remove("active"));
+
+      container.addEventListener("drop", (e) => {
+        e.preventDefault();
+        container.classList.remove("active");
+      });
+    }
+
+    function getDragAfterElement(container, y) {
+      const els = [...container.querySelectorAll(".item:not(.dragging)")];
+      return els.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+          return { offset, element: child };
+        }
+        return closest;
+      }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+    }
+
+    document.getElementById("checkBtn").addEventListener("click", () => {
+      clearStatus();
+      const attempt = currentTimeline();
+      if (attempt.length !== CORRECT.length) {
+        setStatus(false, "Put all the events into the Timeline first.");
+        return;
+      }
+      const ok = attempt.every((v, i) => v === CORRECT[i]);
+      setStatus(ok, ok ? "✅ Correct order!" : "❌ Not quite—reorder and try again.");
+    });
+
+    document.getElementById("resetBtn").addEventListener("click", resetGame);
+
+    document.getElementById("showBtn").addEventListener("click", () => {
+      clearStatus();
+      pool.innerHTML = "";
+      timeline.innerHTML = "";
+      CORRECT.forEach(text => timeline.appendChild(makeItem(text)));
+      setStatus(true, "Answer shown. (You can hit Reset to try again.)");
+    });
+
+    enableDrop(pool);
+    enableDrop(timeline);
+    resetGame();
+  </script>
+</body>
+</html>
